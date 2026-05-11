@@ -1,0 +1,40 @@
+name: Test action
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / ${{ matrix.version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        version:
+          - nightly
+          - latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup C3
+        id: setup-c3
+        uses: ./
+        with:
+          version: ${{ matrix.version }}
+
+      - name: Verify C3
+        shell: bash
+        run: |
+          c3c --version
+          test -n "${{ steps.setup-c3.outputs.c3c-path }}"
+          test -n "${{ steps.setup-c3.outputs.release-tag }}"
