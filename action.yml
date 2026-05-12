@@ -8,19 +8,13 @@ branding:
 
 inputs:
   version:
-    description: >-
-      C3 release tag to install. Use "latest" for the latest stable release or
-      "nightly" for the newest prerelease/nightly release.
+    description: C3 release to install. Use nightly, latest, or a release tag.
     required: false
     default: nightly
-  github-token:
-    description: GitHub token used for GitHub API requests.
+  build:
+    description: Artifact build to install. Use release or debug.
     required: false
-    default: ""
-  check:
-    description: Run `c3c --version` after installation.
-    required: false
-    default: "true"
+    default: release
 
 outputs:
   c3c-path:
@@ -41,82 +35,68 @@ runs:
       shell: bash
       env:
         INPUT_VERSION: ${{ inputs.version }}
-        GH_TOKEN: ${{ inputs.github-token || github.token }}
+        INPUT_BUILD: ${{ inputs.build }}
       run: |
         set -euo pipefail
 
-        api_headers=(-H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
-        if [ -n "${GH_TOKEN:-}" ]; then
-          api_headers+=(-H "Authorization: Bearer ${GH_TOKEN}")
-        fi
-
-        install_root="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/c3"
-        mkdir -p "$install_root"
-
         case "${INPUT_VERSION}" in
           nightly|prerelease)
-            releases_json="$RUNNER_TEMP/c3-releases.json"
-            curl -fsSL "${api_headers[@]}" \
-              "https://api.github.com/repos/c3lang/c3c/releases?per_page=50" \
-              -o "$releases_json"
-            release_tag="$(python3 - "$releases_json" <<'PY'
-        import json, sys
-        releases = json.load(open(sys.argv[1], encoding="utf-8"))
-        for release in releases:
-            if release.get("prerelease") and not release.get("draft"):
-                print(release["tag_name"])
-                break
-        PY
-            )"
+            release_tag="$(curl -fsSL https://api.github.com/repos/c3lang/c3c/releases?per_page=50 | python3 -c 'import json,sys; print(next(r["tag_name"] for r in json.load(sys.stdin) if r["prerelease"] and not r["draft"]))')"
             ;;
           latest|stable)
-            release_tag="$(curl -fsSL "${api_headers[@]}" \
-              "https://api.github.com/repos/c3lang/c3c/releases/latest" \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
+            release_tag="$(curl -fsSL https://api.github.com/repos/c3lang/c3c/releases/latest | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
             ;;
           *)
             release_tag="${INPUT_VERSION}"
             ;;
         esac
 
-        if [ -z "${release_tag:-}" ] || [ "$release_tag" = "null" ]; then
-          echo "Could not resolve a C3 release for version '${INPUT_VERSION}'." >&2
-          exit 1
-        fi
-
-        case "${RUNNER_OS}" in
-          Linux)
-            asset_name="c3-linux-static.tar.gz"
+        case "${INPUT_BUILD}" in
+          release)
+            build_name="release"
+            artifact_suffix=""
             ;;
-          macOS)
-            asset_name="c3-macos.zip"
-            ;;
-          Windows)
-            asset_name="c3-windows.zip"
+          debug|dbg)
+            build_name="debug"
+            artifact_suffix="-dbg"
             ;;
           *)
-            echo "Unsupported runner OS: ${RUNNER_OS}" >&2
+            echo "Unsupported C3 artifact build: ${INPUT_BUILD}. Use 'release' or 'debug'." >&2
             exit 1
             ;;
         esac
 
+        linux_asset_base="c3-linux-static"
+        if [[ "${release_tag}" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+          release_major="${BASH_REMATCH[1]}"
+          release_minor="${BASH_REMATCH[2]}"
+          release_patch="${BASH_REMATCH[3]}"
+
+          if (( release_major == 0 && (release_minor < 7 || (release_minor == 7 && release_patch < 10)) )); then
+            linux_asset_base="c3-linux"
+          fi
+        fi
+
+        case "${RUNNER_OS}" in
+          Linux) asset_name="${linux_asset_base}${artifact_suffix}.tar.gz" ;;
+          macOS) asset_name="c3-macos${artifact_suffix}.zip" ;;
+          Windows) asset_name="c3-windows${artifact_suffix}.zip" ;;
+          *) echo "Unsupported runner OS: ${RUNNER_OS}" >&2; exit 1 ;;
+        esac
+
         echo "Installing C3 ${release_tag} (${asset_name})"
 
-        asset_url="https://github.com/c3lang/c3c/releases/download/${release_tag}/${asset_name}"
+        install_root="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/c3"
+        dest="$install_root/${release_tag}/${build_name}"
         archive="$RUNNER_TEMP/${asset_name}"
-        curl -fL "${api_headers[@]}" "$asset_url" -o "$archive"
 
-        dest="$install_root/${release_tag}"
         rm -rf "$dest"
         mkdir -p "$dest"
+        curl -fL "https://github.com/c3lang/c3c/releases/download/${release_tag}/${asset_name}" -o "$archive"
 
         case "$asset_name" in
-          *.zip)
-            unzip -q "$archive" -d "$dest"
-            ;;
-          *.tar.gz)
-            tar -xzf "$archive" -C "$dest"
-            ;;
+          *.zip) unzip -q "$archive" -d "$dest" ;;
+          *.tar.gz) tar -xzf "$archive" -C "$dest" ;;
         esac
 
         c3c_path="$(find "$dest" -type f \( -name c3c -o -name c3c.exe \) | head -n 1)"
@@ -127,16 +107,10 @@ runs:
         fi
 
         chmod +x "$c3c_path" || true
-        c3c_dir="$(dirname "$c3c_path")"
-        echo "$c3c_dir" >> "$GITHUB_PATH"
+        echo "$(dirname "$c3c_path")" >> "$GITHUB_PATH"
 
         version_output="$($c3c_path --version | head -n 1)"
 
         echo "c3c-path=$c3c_path" >> "$GITHUB_OUTPUT"
         echo "version=$version_output" >> "$GITHUB_OUTPUT"
         echo "release-tag=$release_tag" >> "$GITHUB_OUTPUT"
-
-    - name: Show C3 compiler version
-      if: ${{ inputs.check == 'true' }}
-      shell: bash
-      run: c3c --version

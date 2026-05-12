@@ -31,8 +31,7 @@ By default this installs the latest C3 prerelease/nightly.
 | Input | Default | Description |
 | --- | --- | --- |
 | `version` | `nightly` | C3 release to install. Use `nightly`, `latest`, or a specific tag such as `v0.7.11`. |
-| `github-token` | `${{ github.token }}` | Token for GitHub API requests. |
-| `check` | `true` | Run `c3c --version` after installation. |
+| `build` | `release` | Artifact build to install. Use `release` or `debug`. |
 
 ## Outputs
 
@@ -58,4 +57,12 @@ Install a specific release:
 - uses: jotrorox/setup-c3@v1
   with:
     version: v0.7.11
+```
+
+Install the debug artifact:
+
+```yaml
+- uses: jotrorox/setup-c3@v1
+  with:
+    build: debug
 ```
