@@ -24,13 +24,13 @@ jobs:
         run: c3c build
 ```
 
-By default this installs the latest C3 prerelease/nightly.
+By default this installs the latest C3 release.
 
 ## Inputs
 
 | Input | Default | Description |
 | --- | --- | --- |
-| `version` | `nightly` | C3 release to install. Use `nightly`, `latest`, or a specific tag such as `v0.7.11`. |
+| `version` | `nightly` | C3 release to install. `nightly` and `latest` install the latest release, or use a specific tag such as `v0.8.0`. |
 | `build` | `release` | Artifact build to install. Use `release` or `debug`. |
 
 ## Outputs

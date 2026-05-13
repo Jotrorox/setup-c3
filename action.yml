@@ -41,13 +41,13 @@ runs:
 
         case "${INPUT_VERSION}" in
           nightly|prerelease)
-            release_tag="$(curl -fsSL https://api.github.com/repos/c3lang/c3c/releases?per_page=50 | python3 -c 'import json,sys; print(next(r["tag_name"] for r in json.load(sys.stdin) if r["prerelease"] and not r["draft"]))')"
+            release_ref="latest"
             ;;
           latest|stable)
-            release_tag="$(curl -fsSL https://api.github.com/repos/c3lang/c3c/releases/latest | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
+            release_ref="latest"
             ;;
           *)
-            release_tag="${INPUT_VERSION}"
+            release_ref="${INPUT_VERSION}"
             ;;
         esac
 
@@ -58,7 +58,7 @@ runs:
             ;;
           debug|dbg)
             build_name="debug"
-            artifact_suffix="-dbg"
+            artifact_suffix="-debug"
             ;;
           *)
             echo "Unsupported C3 artifact build: ${INPUT_BUILD}. Use 'release' or 'debug'." >&2
@@ -67,7 +67,7 @@ runs:
         esac
 
         linux_asset_base="c3-linux-static"
-        if [[ "${release_tag}" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        if [[ "${release_ref}" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
           release_major="${BASH_REMATCH[1]}"
           release_minor="${BASH_REMATCH[2]}"
           release_patch="${BASH_REMATCH[3]}"
@@ -84,15 +84,51 @@ runs:
           *) echo "Unsupported runner OS: ${RUNNER_OS}" >&2; exit 1 ;;
         esac
 
-        echo "Installing C3 ${release_tag} (${asset_name})"
+        echo "Installing C3 ${release_ref} (${asset_name})"
 
         install_root="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/c3"
-        dest="$install_root/${release_tag}/${build_name}"
-        archive="$RUNNER_TEMP/${asset_name}"
+        dest="$install_root/${release_ref}/${build_name}"
 
         rm -rf "$dest"
         mkdir -p "$dest"
-        curl -fL "https://github.com/c3lang/c3c/releases/download/${release_tag}/${asset_name}" -o "$archive"
+
+        asset_names=("$asset_name")
+        if [[ "${RUNNER_OS}" == "Linux" && "${linux_asset_base}" == "c3-linux-static" ]]; then
+          asset_names+=("c3-linux${artifact_suffix}.tar.gz" "c3-ubuntu-20${artifact_suffix}.tar.gz")
+        fi
+
+        archive=""
+        archive_url=""
+        resolved_release_url=""
+        for candidate in "${asset_names[@]}"; do
+          candidate_archive="$RUNNER_TEMP/$candidate"
+          if [[ "${release_ref}" == "latest" ]]; then
+            candidate_url="https://github.com/c3lang/c3c/releases/latest/download/${candidate}"
+            resolved_release_url="$(curl -fsSI "$candidate_url" -o /dev/null -w '%{redirect_url}' 2>/dev/null || true)"
+          else
+            candidate_url="https://github.com/c3lang/c3c/releases/download/${release_ref}/${candidate}"
+            resolved_release_url=""
+          fi
+
+          if archive_url="$(curl -fL "$candidate_url" -o "$candidate_archive" -w '%{url_effective}' 2>/dev/null)"; then
+            asset_name="$candidate"
+            archive="$candidate_archive"
+            break
+          fi
+        done
+
+        if [[ -z "$archive" ]]; then
+          echo "Could not download a C3 archive for ${RUNNER_OS} ${release_ref}." >&2
+          printf 'Tried: %s\n' "${asset_names[@]}" >&2
+          exit 1
+        fi
+
+        release_tag="$release_ref"
+        if [[ "$resolved_release_url" =~ /releases/download/([^/]+)/ ]]; then
+          release_tag="${BASH_REMATCH[1]}"
+        elif [[ "$archive_url" =~ /releases/download/([^/]+)/ ]]; then
+          release_tag="${BASH_REMATCH[1]}"
+        fi
 
         case "$asset_name" in
           *.zip) unzip -q "$archive" -d "$dest" ;;
