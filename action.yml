@@ -77,14 +77,37 @@ runs:
           fi
         fi
 
+        needs_macos_llvm16=false
         needs_macos_llvm17=false
+        needs_macos_lld=false
+        needs_macos_z3_413=false
+        needs_macos_z3_412_usr_local=false
         if [[ "${RUNNER_OS}" == "macOS" && "${release_ref}" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
           release_major="${BASH_REMATCH[1]}"
           release_minor="${BASH_REMATCH[2]}"
+          release_patch="${BASH_REMATCH[3]}"
 
-          if (( release_major == 0 && release_minor < 8 )); then
+          if (( release_major == 0 && release_minor == 7 && release_patch == 9 )); then
             needs_macos_llvm17=true
+            needs_macos_lld=true
+          elif (( release_major == 0 && release_minor == 6 && (release_patch == 1 || release_patch == 2) )); then
+            needs_macos_llvm17=true
+            needs_macos_z3_413=true
+          elif (( release_major == 0 && release_minor == 6 && release_patch == 0 )); then
+            needs_macos_llvm17=true
+            needs_macos_llvm16=true
+          elif (( release_major == 0 && release_minor == 5 && (release_patch == 4 || release_patch == 5) )); then
+            needs_macos_llvm17=true
+            needs_macos_z3_412_usr_local=true
           fi
+        fi
+
+        if [[ "${RUNNER_OS}" == "macOS" ]]; then
+          case "${release_ref}" in
+            release_0.5|0.4godbolt-v2|0.4godbolt.v2|0.4stripunused|0.4ubuntu20|0.4)
+              needs_macos_z3_412_usr_local=true
+              ;;
+          esac
         fi
 
         case "${RUNNER_OS}" in
@@ -163,13 +186,53 @@ runs:
           exit 1
         fi
 
-        if [[ "$needs_macos_llvm17" == "true" ]]; then
+        if [[ "$needs_macos_llvm16" == "true" || "$needs_macos_llvm17" == "true" || "$needs_macos_lld" == "true" || "$needs_macos_z3_413" == "true" || "$needs_macos_z3_412_usr_local" == "true" ]]; then
           if ! command -v brew >/dev/null 2>&1; then
-            echo "C3 ${release_ref} requires Homebrew llvm@17 on macOS, but brew was not found." >&2
+            echo "C3 ${release_ref} requires Homebrew dependencies on macOS, but brew was not found." >&2
             exit 1
           fi
+        fi
 
+        if [[ "$needs_macos_llvm16" == "true" ]]; then
+          brew list llvm@16 >/dev/null 2>&1 || brew install llvm@16
+        fi
+        if [[ "$needs_macos_llvm17" == "true" ]]; then
           brew list llvm@17 >/dev/null 2>&1 || brew install llvm@17
+        fi
+        if [[ "$needs_macos_lld" == "true" ]]; then
+          brew list lld >/dev/null 2>&1 || brew install lld
+
+          lld_lib_dir="$(brew --prefix lld)/lib"
+          if [[ ! -e "$lld_lib_dir/liblldCOFF.dylib" ]]; then
+            llvm17_liblld_coff="$(brew --prefix llvm@17)/lib/liblldCOFF.dylib"
+            if [[ -e "$llvm17_liblld_coff" ]]; then
+              sudo mkdir -p "$lld_lib_dir"
+              sudo ln -sf "$llvm17_liblld_coff" "$lld_lib_dir/liblldCOFF.dylib"
+            fi
+          fi
+        fi
+        if [[ "$needs_macos_z3_413" == "true" || "$needs_macos_z3_412_usr_local" == "true" ]]; then
+          brew list z3 >/dev/null 2>&1 || brew install z3
+
+          z3_lib_dir="$(brew --prefix z3)/lib"
+          z3_current_lib="$(find "$z3_lib_dir" -maxdepth 1 -name 'libz3.*.dylib' | head -n 1)"
+          if [[ -z "$z3_current_lib" ]]; then
+            z3_current_lib="$z3_lib_dir/libz3.dylib"
+          fi
+
+          if [[ "$needs_macos_z3_413" == "true" && ! -e "$z3_lib_dir/libz3.4.13.dylib" ]]; then
+            sudo ln -sf "$z3_current_lib" "$z3_lib_dir/libz3.4.13.dylib"
+          fi
+
+          if [[ "$needs_macos_z3_412_usr_local" == "true" ]]; then
+            sudo mkdir -p /usr/local/opt
+            if [[ ! -e /usr/local/opt/z3 ]]; then
+              sudo ln -s "$(brew --prefix z3)" /usr/local/opt/z3
+            fi
+            if [[ ! -e /usr/local/opt/z3/lib/libz3.4.12.dylib ]]; then
+              sudo ln -sf "$z3_current_lib" /usr/local/opt/z3/lib/libz3.4.12.dylib
+            fi
+          fi
         fi
 
         release_tag="$release_ref"

@@ -36,6 +36,13 @@ jobs:
               jq -c '
                 .[]
                 | select(.draft == false)
+                | select(.tag_name | test("^v?[0-9]+\\.[0-9]+\\.[0-9]+$"))
+                | select(
+                    (.tag_name | capture("^v?(?<major>[0-9]+)\\.(?<minor>[0-9]+)\\.(?<patch>[0-9]+)$")) as $v
+                    | (($v.major | tonumber) > 0)
+                      or (($v.major | tonumber) == 0 and ($v.minor | tonumber) > 6)
+                      or (($v.major | tonumber) == 0 and ($v.minor | tonumber) == 6 and ($v.patch | tonumber) > 0)
+                  )
                 | .tag_name as $version
                 | [
                     (
