@@ -15,7 +15,7 @@ jobs:
     name: Discover C3 releases
     runs-on: ubuntu-latest
     outputs:
-      versions: ${{ steps.releases.outputs.versions }}
+      matrix: ${{ steps.releases.outputs.matrix }}
     steps:
       - name: Fetch C3 release tags
         id: releases
@@ -24,53 +24,78 @@ jobs:
           set -euo pipefail
 
           page=1
-          tags=()
+          entries=()
 
           while true; do
             response="$(curl -fsSL "https://api.github.com/repos/c3lang/c3c/releases?per_page=100&page=${page}")"
-            page_tags="$(
-              jq -r '
-                .[]
-                | select(.draft == false)
-                | select(
-                    any(
-                      .assets[].name;
-                      test("^(c3-linux-static|c3-linux|c3-ubuntu-22|c3-ubuntu-20)(-[0-9]+(\\.[0-9]+)+)?\\.tar\\.gz$")
-                      or test("^c3-linux\\.tar-[0-9]+\\.gz$")
-                    )
-                  )
-                | .tag_name
-              ' <<< "$response"
-            )"
-
-            if [[ -z "$page_tags" ]]; then
+            if [[ "$(jq 'length' <<< "$response")" -eq 0 ]]; then
               break
             fi
 
-            while IFS= read -r tag; do
-              tags+=("$tag")
-            done <<< "$page_tags"
+            page_entries="$(
+              jq -c '
+                .[]
+                | select(.draft == false)
+                | .tag_name as $version
+                | [
+                    (
+                      select(
+                        any(
+                          .assets[].name;
+                          test("^(c3-linux-static|c3-linux|c3-ubuntu-22|c3-ubuntu-20)(-[0-9]+(\\.[0-9]+)+)?\\.tar\\.gz$")
+                          or test("^c3-linux\\.tar-[0-9]+\\.gz$")
+                        )
+                      )
+                      | { platform: "ubuntu-latest", version: $version }
+                    ),
+                    (
+                      select(
+                        any(
+                          .assets[].name;
+                          test("^c3-macos(-[0-9]+(\\.[0-9]+)+|-4)?\\.zip$")
+                        )
+                      )
+                      | { platform: "macos-latest", version: $version }
+                    ),
+                    (
+                      select(
+                        any(
+                          .assets[].name;
+                          test("^c3-windows(-[0-9]+(\\.[0-9]+)+|-6)?\\.zip$")
+                        )
+                      )
+                      | { platform: "windows-latest", version: $version }
+                    )
+                  ]
+                | .[]
+              ' <<< "$response"
+            )"
+
+            if [[ -n "$page_entries" ]]; then
+              while IFS= read -r entry; do
+                entries+=("$entry")
+              done <<< "$page_entries"
+            fi
 
             page=$((page + 1))
           done
 
-          if (( ${#tags[@]} == 0 )); then
+          if (( ${#entries[@]} == 0 )); then
             echo "No C3 releases found." >&2
             exit 1
           fi
 
-          versions="$(printf '%s\n' "${tags[@]}" | jq -R . | jq -cs .)"
-          echo "versions=${versions}" >> "$GITHUB_OUTPUT"
-          echo "Testing versions: ${versions}"
+          matrix="$(printf '%s\n' "${entries[@]}" | jq -cs '{ include: . }')"
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "Testing matrix: ${matrix}"
 
   backwards-test:
-    name: C3 ${{ matrix.version }}
+    name: ${{ matrix.platform }} / C3 ${{ matrix.version }}
     needs: releases
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.platform }}
     strategy:
       fail-fast: false
-      matrix:
-        version: ${{ fromJson(needs.releases.outputs.versions) }}
+      matrix: ${{ fromJson(needs.releases.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
