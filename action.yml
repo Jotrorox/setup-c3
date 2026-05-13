@@ -93,9 +93,39 @@ runs:
         mkdir -p "$dest"
 
         asset_names=("$asset_name")
-        if [[ "${RUNNER_OS}" == "Linux" && "${linux_asset_base}" == "c3-linux-static" ]]; then
-          asset_names+=("c3-linux${artifact_suffix}.tar.gz" "c3-ubuntu-20${artifact_suffix}.tar.gz")
+        release_version=""
+        if [[ "${release_ref}" =~ ^v?([0-9]+(\.[0-9]+)+)$ ]]; then
+          release_version="${BASH_REMATCH[1]}"
         fi
+
+        case "${RUNNER_OS}" in
+          Linux)
+            asset_names+=(
+              "c3-linux${artifact_suffix}.tar.gz"
+              "c3-ubuntu-22${artifact_suffix}.tar.gz"
+              "c3-ubuntu-20${artifact_suffix}.tar.gz"
+              "c3-linux${artifact_suffix}.tar-6.gz"
+            )
+            if [[ -n "$release_version" ]]; then
+              asset_names+=(
+                "c3-linux${artifact_suffix}-${release_version}.tar.gz"
+                "c3-ubuntu-20${artifact_suffix}-${release_version}.tar.gz"
+              )
+            fi
+            ;;
+          macOS)
+            asset_names+=("c3-macos${artifact_suffix}-4.zip")
+            if [[ -n "$release_version" ]]; then
+              asset_names+=("c3-macos${artifact_suffix}-${release_version}.zip")
+            fi
+            ;;
+          Windows)
+            asset_names+=("c3-windows${artifact_suffix}-6.zip")
+            if [[ -n "$release_version" ]]; then
+              asset_names+=("c3-windows${artifact_suffix}-${release_version}.zip")
+            fi
+            ;;
+        esac
 
         archive=""
         archive_url=""
@@ -132,7 +162,7 @@ runs:
 
         case "$asset_name" in
           *.zip) unzip -q "$archive" -d "$dest" ;;
-          *.tar.gz) tar -xzf "$archive" -C "$dest" ;;
+          *.tar.gz|*.tar-*.gz) tar -xzf "$archive" -C "$dest" ;;
         esac
 
         c3c_path="$(find "$dest" -type f \( -name c3c -o -name c3c.exe \) | head -n 1)"
