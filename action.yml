@@ -77,6 +77,16 @@ runs:
           fi
         fi
 
+        needs_macos_llvm17=false
+        if [[ "${RUNNER_OS}" == "macOS" && "${release_ref}" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+          release_major="${BASH_REMATCH[1]}"
+          release_minor="${BASH_REMATCH[2]}"
+
+          if (( release_major == 0 && release_minor < 8 )); then
+            needs_macos_llvm17=true
+          fi
+        fi
+
         case "${RUNNER_OS}" in
           Linux) asset_name="${linux_asset_base}${artifact_suffix}.tar.gz" ;;
           macOS) asset_name="c3-macos${artifact_suffix}.zip" ;;
@@ -151,6 +161,15 @@ runs:
           echo "Could not download a C3 archive for ${RUNNER_OS} ${release_ref}." >&2
           printf 'Tried: %s\n' "${asset_names[@]}" >&2
           exit 1
+        fi
+
+        if [[ "$needs_macos_llvm17" == "true" ]]; then
+          if ! command -v brew >/dev/null 2>&1; then
+            echo "C3 ${release_ref} requires Homebrew llvm@17 on macOS, but brew was not found." >&2
+            exit 1
+          fi
+
+          brew list llvm@17 >/dev/null 2>&1 || brew install llvm@17
         fi
 
         release_tag="$release_ref"
