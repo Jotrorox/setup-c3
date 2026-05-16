@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   test:
-    name: ${{ matrix.os }} / ${{ matrix.version }}
+    name: ${{ matrix.os }} / ${{ matrix.version }} / ${{ matrix.build }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -22,6 +22,9 @@ jobs:
         version:
           - nightly
           - latest
+        build:
+          - release
+          - debug
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -31,6 +34,7 @@ jobs:
         uses: ./
         with:
           version: ${{ matrix.version }}
+          build: ${{ matrix.build }}
 
       - name: Verify C3
         shell: bash

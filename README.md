@@ -31,6 +31,7 @@ By default this installs the latest C3 prerelease/nightly build.
 | Input | Default | Description |
 | --- | --- | --- |
 | `version` | `nightly` | C3 release to install. Use `nightly`, `prerelease`, `latest`, `stable`, or a release tag such as `v0.8.0_3`. |
+| `build` | `release` | C3 build flavor to install. Use `release` or `debug`. |
 
 ## Outputs
 
@@ -63,3 +64,13 @@ Install a specific release:
   with:
     version: v0.8.0_3
 ```
+
+Install a debug build:
+
+```yaml
+- uses: jotrorox/setup-c3@v1
+  with:
+    build: debug
+```
+
+Debug builds require a C3 release that publishes debug assets for the runner platform.

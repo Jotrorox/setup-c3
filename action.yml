@@ -11,6 +11,10 @@ inputs:
     description: C3 release to install. Use nightly, latest, stable, prerelease, or a release tag.
     required: false
     default: nightly
+  build:
+    description: C3 build flavor to install. Use release or debug.
+    required: false
+    default: release
 
 outputs:
   c3c-path:
@@ -31,6 +35,7 @@ runs:
       shell: bash
       env:
         INPUT_VERSION: ${{ inputs.version }}
+        INPUT_BUILD: ${{ inputs.build }}
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
@@ -54,6 +59,19 @@ runs:
             ;;
         esac
 
+        case "${INPUT_BUILD}" in
+          release|"")
+            build="release"
+            ;;
+          debug)
+            build="debug"
+            ;;
+          *)
+            echo "Unsupported C3 build '${INPUT_BUILD}'. Use 'release' or 'debug'." >&2
+            exit 1
+            ;;
+        esac
+
         if [ -z "${release_tag:-}" ] || [ "$release_tag" = "null" ]; then
           echo "Could not resolve a C3 release for version '${INPUT_VERSION}'." >&2
           exit 1
@@ -61,13 +79,25 @@ runs:
 
         case "${RUNNER_OS}" in
           Linux)
-            asset_name="c3-linux-static.tar.gz"
+            if [ "$build" = "debug" ]; then
+              asset_name="c3-linux-static-debug.tar.gz"
+            else
+              asset_name="c3-linux-static.tar.gz"
+            fi
             ;;
           macOS)
-            asset_name="c3-macos.zip"
+            if [ "$build" = "debug" ]; then
+              asset_name="c3-macos-debug.zip"
+            else
+              asset_name="c3-macos.zip"
+            fi
             ;;
           Windows)
-            asset_name="c3-windows.zip"
+            if [ "$build" = "debug" ]; then
+              asset_name="c3-windows-debug.zip"
+            else
+              asset_name="c3-windows.zip"
+            fi
             ;;
           *)
             echo "Unsupported runner OS: ${RUNNER_OS}" >&2
@@ -75,7 +105,7 @@ runs:
             ;;
         esac
 
-        echo "Installing C3 ${release_tag} (${asset_name})"
+        echo "Installing C3 ${release_tag} ${build} (${asset_name})"
 
         install_root="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/c3"
         dest="$install_root/${release_tag}"
