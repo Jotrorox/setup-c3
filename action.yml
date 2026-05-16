@@ -109,7 +109,7 @@ runs:
         asset_url=""
         for candidate in "${asset_candidates[@]}"; do
           candidate_url="https://github.com/c3lang/c3c/releases/download/${release_tag}/${candidate}"
-          if curl -fsIL "${api_headers[@]}" "$candidate_url" >/dev/null; then
+          if curl -fsIL "$candidate_url" >/dev/null; then
             asset_name="$candidate"
             asset_url="$candidate_url"
             break
@@ -132,7 +132,7 @@ runs:
         rm -rf "$dest"
         mkdir -p "$dest"
 
-        curl -fL "${api_headers[@]}" "$asset_url" -o "$archive"
+        curl -fL "$asset_url" -o "$archive"
 
         case "$asset_name" in
           *.zip)
