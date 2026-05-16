@@ -80,23 +80,23 @@ runs:
         case "${RUNNER_OS}" in
           Linux)
             if [ "$build" = "debug" ]; then
-              asset_name="c3-linux-static-debug.tar.gz"
+              asset_candidates=("c3-linux-static-debug.tar.gz" "c3-ubuntu-20-debug.tar.gz" "c3-linux-debug.tar.gz")
             else
-              asset_name="c3-linux-static.tar.gz"
+              asset_candidates=("c3-linux-static.tar.gz" "c3-ubuntu-20.tar.gz" "c3-linux.tar.gz")
             fi
             ;;
           macOS)
             if [ "$build" = "debug" ]; then
-              asset_name="c3-macos-debug.zip"
+              asset_candidates=("c3-macos-debug.zip")
             else
-              asset_name="c3-macos.zip"
+              asset_candidates=("c3-macos.zip")
             fi
             ;;
           Windows)
             if [ "$build" = "debug" ]; then
-              asset_name="c3-windows-debug.zip"
+              asset_candidates=("c3-windows-debug.zip")
             else
-              asset_name="c3-windows.zip"
+              asset_candidates=("c3-windows.zip")
             fi
             ;;
           *)
@@ -105,12 +105,29 @@ runs:
             ;;
         esac
 
+        asset_name=""
+        asset_url=""
+        for candidate in "${asset_candidates[@]}"; do
+          candidate_url="https://github.com/c3lang/c3c/releases/download/${release_tag}/${candidate}"
+          if curl -fsIL "${api_headers[@]}" "$candidate_url" >/dev/null; then
+            asset_name="$candidate"
+            asset_url="$candidate_url"
+            break
+          fi
+        done
+
+        if [ -z "$asset_name" ]; then
+          echo "Could not find a ${RUNNER_OS} ${build} asset for C3 ${release_tag}." >&2
+          printf 'Tried assets:\n' >&2
+          printf '  %s\n' "${asset_candidates[@]}" >&2
+          exit 1
+        fi
+
         echo "Installing C3 ${release_tag} ${build} (${asset_name})"
 
         install_root="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/c3"
         dest="$install_root/${release_tag}"
         archive="$RUNNER_TEMP/${asset_name}"
-        asset_url="https://github.com/c3lang/c3c/releases/download/${release_tag}/${asset_name}"
 
         rm -rf "$dest"
         mkdir -p "$dest"
