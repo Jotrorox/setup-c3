@@ -37,4 +37,5 @@ jobs:
         run: |
           c3c --version
           test -n "${{ steps.setup-c3.outputs.c3c-path }}"
+          test -n "${{ steps.setup-c3.outputs.version }}"
           test -n "${{ steps.setup-c3.outputs.release-tag }}"

@@ -24,14 +24,13 @@ jobs:
         run: c3c build
 ```
 
-By default this installs the latest C3 release.
+By default this installs the latest C3 prerelease/nightly build.
 
 ## Inputs
 
 | Input | Default | Description |
 | --- | --- | --- |
-| `version` | `nightly` | C3 release to install. `nightly` and `latest` install the latest release, or use a specific tag such as `v0.8.0`. |
-| `build` | `release` | Artifact build to install. Use `release` or `debug`. |
+| `version` | `nightly` | C3 release to install. Use `nightly`, `prerelease`, `latest`, `stable`, or a release tag such as `v0.8.0_3`. |
 
 ## Outputs
 
@@ -42,6 +41,12 @@ By default this installs the latest C3 release.
 | `release-tag` | C3 release tag that was installed. |
 
 ## Examples
+
+Install the latest prerelease/nightly build:
+
+```yaml
+- uses: jotrorox/setup-c3@v1
+```
 
 Install the latest stable release:
 
@@ -56,13 +61,5 @@ Install a specific release:
 ```yaml
 - uses: jotrorox/setup-c3@v1
   with:
-    version: v0.7.11
-```
-
-Install the debug artifact:
-
-```yaml
-- uses: jotrorox/setup-c3@v1
-  with:
-    build: debug
+    version: v0.8.0_3
 ```

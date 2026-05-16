@@ -8,19 +8,9 @@ branding:
 
 inputs:
   version:
-    description: >-
-      C3 release tag to install. Use "latest" for the latest stable release or
-      "nightly" for the newest prerelease/nightly release.
+    description: C3 release to install. Use nightly, latest, stable, prerelease, or a release tag.
     required: false
     default: nightly
-  github-token:
-    description: GitHub token used for GitHub API requests.
-    required: false
-    default: ""
-  check:
-    description: Run `c3c --version` after installation.
-    required: false
-    default: "true"
 
 outputs:
   c3c-path:
@@ -41,7 +31,7 @@ runs:
       shell: bash
       env:
         INPUT_VERSION: ${{ inputs.version }}
-        GH_TOKEN: ${{ inputs.github-token || github.token }}
+        GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
 
@@ -50,29 +40,14 @@ runs:
           api_headers+=(-H "Authorization: Bearer ${GH_TOKEN}")
         fi
 
-        install_root="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/c3"
-        mkdir -p "$install_root"
-
         case "${INPUT_VERSION}" in
           nightly|prerelease)
-            releases_json="$RUNNER_TEMP/c3-releases.json"
-            curl -fsSL "${api_headers[@]}" \
-              "https://api.github.com/repos/c3lang/c3c/releases?per_page=50" \
-              -o "$releases_json"
-            release_tag="$(python3 - "$releases_json" <<'PY'
-        import json, sys
-        releases = json.load(open(sys.argv[1], encoding="utf-8"))
-        for release in releases:
-            if release.get("prerelease") and not release.get("draft"):
-                print(release["tag_name"])
-                break
-        PY
-            )"
+            release_tag="latest-prerelease-tag"
             ;;
           latest|stable)
             release_tag="$(curl -fsSL "${api_headers[@]}" \
               "https://api.github.com/repos/c3lang/c3c/releases/latest" \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", ""))')"
             ;;
           *)
             release_tag="${INPUT_VERSION}"
@@ -102,13 +77,15 @@ runs:
 
         echo "Installing C3 ${release_tag} (${asset_name})"
 
-        asset_url="https://github.com/c3lang/c3c/releases/download/${release_tag}/${asset_name}"
-        archive="$RUNNER_TEMP/${asset_name}"
-        curl -fL "${api_headers[@]}" "$asset_url" -o "$archive"
-
+        install_root="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/c3"
         dest="$install_root/${release_tag}"
+        archive="$RUNNER_TEMP/${asset_name}"
+        asset_url="https://github.com/c3lang/c3c/releases/download/${release_tag}/${asset_name}"
+
         rm -rf "$dest"
         mkdir -p "$dest"
+
+        curl -fL "${api_headers[@]}" "$asset_url" -o "$archive"
 
         case "$asset_name" in
           *.zip)
@@ -130,13 +107,10 @@ runs:
         c3c_dir="$(dirname "$c3c_path")"
         echo "$c3c_dir" >> "$GITHUB_PATH"
 
-        version_output="$($c3c_path --version | head -n 1)"
+        version_output="$("$c3c_path" --version)"
+        version_output="${version_output%%$'\n'*}"
+        echo "$version_output"
 
         echo "c3c-path=$c3c_path" >> "$GITHUB_OUTPUT"
         echo "version=$version_output" >> "$GITHUB_OUTPUT"
         echo "release-tag=$release_tag" >> "$GITHUB_OUTPUT"
-
-    - name: Show C3 compiler version
-      if: ${{ inputs.check == 'true' }}
-      shell: bash
-      run: c3c --version
