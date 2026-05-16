@@ -154,6 +154,22 @@ runs:
         c3c_dir="$(dirname "$c3c_path")"
         echo "$c3c_dir" >> "$GITHUB_PATH"
 
+        if [ "${RUNNER_OS}" = "macOS" ] && command -v otool >/dev/null 2>&1; then
+          missing_homebrew_deps=()
+          if otool -L "$c3c_path" | grep -Fq "/opt/homebrew/opt/llvm@17/lib/libunwind.1.dylib" \
+            && [ ! -e "/opt/homebrew/opt/llvm@17/lib/libunwind.1.dylib" ]; then
+            missing_homebrew_deps+=("llvm@17")
+          fi
+
+          if [ "${#missing_homebrew_deps[@]}" -gt 0 ]; then
+            if ! command -v brew >/dev/null 2>&1; then
+              echo "Missing required Homebrew dependencies: ${missing_homebrew_deps[*]}" >&2
+              exit 1
+            fi
+            brew install "${missing_homebrew_deps[@]}"
+          fi
+        fi
+
         version_output="$("$c3c_path" --version)"
         version_output="${version_output%%$'\n'*}"
         echo "$version_output"
